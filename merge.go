@@ -7,13 +7,13 @@ import (
 )
 
 func (f *FileDB) Merge(items ...interface{}) (uint, error) {
-	defer f.tmpDb.Sync()
+	defer f.db.Sync()
 	var count uint
 	for _, item := range items {
 		switch itemData := item.(type) {
 		case []string:
 			for _, data := range itemData {
-				f.tmpDb.WriteString(data + "\n")
+				f.Set([]byte(data), nil)
 				count++
 				f.stats.NumberOfAddedItems++
 			}
@@ -35,7 +35,7 @@ func (f *FileDB) Merge(items ...interface{}) (uint, error) {
 }
 
 func (f *FileDB) MergeFile(filename string) (uint, error) {
-	defer f.tmpDb.Sync()
+	defer f.db.Sync()
 	newF, err := os.Open(filename)
 	if err != nil {
 		return 0, err
@@ -45,14 +45,14 @@ func (f *FileDB) MergeFile(filename string) (uint, error) {
 }
 
 func (f *FileDB) MergeReader(reader io.Reader) (uint, error) {
-	defer f.tmpDb.Sync()
+	defer f.db.Sync()
 	maxCapacity := 512 * 1024 * 1024
 	var count uint
 	sc := bufio.NewScanner(reader)
 	buf := make([]byte, maxCapacity)
 	sc.Buffer(buf, maxCapacity)
 	for sc.Scan() {
-		f.tmpDb.WriteString(sc.Text() + "\n")
+		f.Set(sc.Bytes(), nil)
 		count++
 		f.stats.NumberOfAddedItems++
 	}

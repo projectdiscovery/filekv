@@ -32,11 +32,6 @@ func TestFile(t *testing.T) {
 		t.Error(err)
 	}
 
-	err = fdb.Process()
-	if err != nil {
-		t.Error(err)
-	}
-
 	allItems := append(items1, items2...)
 	// all items should already exist
 	for _, item := range allItems {

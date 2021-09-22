@@ -8,16 +8,15 @@ import (
 	"strings"
 	"sync"
 
-	bloom "github.com/bits-and-blooms/bloom/v3"
+	qfext "github.com/facebookincubator/go-qfext"
 	"github.com/projectdiscovery/fileutil"
 )
 
 // FileDB - represents a file db implementation
 type FileDB struct {
-	bm      *bloom.BloomFilter
+	qf      *qfext.Filter
 	stats   Stats
 	options Options
-	tmpDb   *os.File
 	db      *os.File
 	sync.RWMutex
 }
@@ -39,57 +38,23 @@ func Open(options Options) (*FileDB, error) {
 		}
 	}
 
-	tmpDb, err := os.CreateTemp("", "")
-	if err != nil {
-		return nil, err
-	}
-
 	fdb := &FileDB{}
 
 	if options.Dedupe {
-		fdb.bm = bloom.NewWithEstimates(options.MaxItems, options.FPRatio)
+		fdb.qf = qfext.New()
 	}
 
 	fdb.options = options
 	fdb.db = db
-	fdb.tmpDb = tmpDb
 
 	return fdb, nil
 }
 
-// Process added files/slices/elements
-func (fdb *FileDB) Process() error {
-	if err := fdb.tmpDb.Sync(); err != nil {
-		return err
-	}
-	if _, err := fdb.tmpDb.Seek(0, 0); err != nil {
-		return err
-	}
-
-	if fdb.options.Dedupe {
-		fdb.bm = bloom.NewWithEstimates(fdb.stats.NumberOfAddedItems, fdb.options.FPRatio)
-	}
-
-	sc := bufio.NewScanner(fdb.tmpDb)
-	maxCapacity := 512 * 1024 * 1024
-	buf := make([]byte, maxCapacity)
-	sc.Buffer(buf, maxCapacity)
-	for sc.Scan() {
-		_ = fdb.Set(sc.Bytes(), nil)
-	}
-	return nil
-}
-
 // Reset the db
 func (fdb *FileDB) Reset() error {
-	if fdb.bm != nil {
-		fdb.bm.ClearAll()
-	}
-	if _, err := fdb.tmpDb.Seek(0, 0); err != nil {
-		return err
-	}
-	if err := fdb.tmpDb.Truncate(0); err != nil {
-		return err
+	if fdb.qf != nil {
+		fdb.qf = nil
+		fdb.qf = qfext.New()
 	}
 	if _, err := fdb.db.Seek(0, 0); err != nil {
 		return err
@@ -112,10 +77,6 @@ func (fdb *FileDB) Size() int64 {
 
 // Close ...
 func (fdb *FileDB) Close() {
-	tmpDBFilename := fdb.tmpDb.Name()
-	fdb.tmpDb.Close()
-	os.RemoveAll(tmpDBFilename)
-
 	fdb.db.Close()
 	dbFilename := fdb.db.Name()
 	if fdb.options.Cleanup {
@@ -139,14 +100,12 @@ func (fdb *FileDB) set(k, v []byte) error {
 
 func (fdb *FileDB) Set(k, v []byte) error {
 	// check for duplicates
-	if fdb.options.Dedupe && fdb.bm != nil {
-		if !fdb.bm.Test(k) {
-			fdb.bm.Add(k)
-			return fdb.set(k, v)
-		} else {
+	if fdb.options.Dedupe && fdb.qf != nil {
+		if fdb.qf.Contains(k) {
 			fdb.stats.NumberOfDupedItems++
 			return errors.New("item already exist")
 		}
+		fdb.qf.Insert(k)
 	}
 
 	fdb.stats.NumberOfItems++
