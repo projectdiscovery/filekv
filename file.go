@@ -163,9 +163,8 @@ func (fdb *FileDB) Scan(handler func([]byte, []byte) error) error {
 	defer dbCopy.Close()
 
 	sc := bufio.NewScanner(dbCopy)
-	maxCapacity := 512 * 1024 * 1024
-	buf := make([]byte, maxCapacity)
-	sc.Buffer(buf, maxCapacity)
+	buf := []byte{}
+	sc.Buffer(buf, 512*1024*1024)
 	for sc.Scan() {
 		tokens := bytes.SplitN(sc.Bytes(), []byte(Separator), 2)
 		var k, v []byte
@@ -179,5 +178,6 @@ func (fdb *FileDB) Scan(handler func([]byte, []byte) error) error {
 			return err
 		}
 	}
+
 	return nil
 }
