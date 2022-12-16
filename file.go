@@ -12,6 +12,8 @@ import (
 	"github.com/projectdiscovery/fileutil"
 )
 
+const MaxBufSize = 512 * 1024 * 1024
+
 // FileDB - represents a file db implementation
 type FileDB struct {
 	bm      *bloom.BloomFilter
@@ -69,11 +71,9 @@ func (fdb *FileDB) Process() error {
 	if fdb.options.Dedupe {
 		fdb.bm = bloom.NewWithEstimates(fdb.stats.NumberOfAddedItems, fdb.options.FPRatio)
 	}
-
+	buf := []byte{}
 	sc := bufio.NewScanner(fdb.tmpDb)
-	maxCapacity := 512 * 1024 * 1024
-	buf := make([]byte, maxCapacity)
-	sc.Buffer(buf, maxCapacity)
+	sc.Buffer(buf, MaxBufSize)
 	for sc.Scan() {
 		_ = fdb.Set(sc.Bytes(), nil)
 	}
@@ -164,7 +164,7 @@ func (fdb *FileDB) Scan(handler func([]byte, []byte) error) error {
 
 	sc := bufio.NewScanner(dbCopy)
 	buf := []byte{}
-	sc.Buffer(buf, 512*1024*1024)
+	sc.Buffer(buf, MaxBufSize)
 	for sc.Scan() {
 		tokens := bytes.SplitN(sc.Bytes(), []byte(Separator), 2)
 		var k, v []byte
